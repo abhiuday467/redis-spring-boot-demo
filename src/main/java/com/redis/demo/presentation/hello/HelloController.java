@@ -1,4 +1,4 @@
-package com.redis.demo.controller;
+package com.redis.demo.presentation.hello;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -16,3 +16,4 @@ public class HelloController {
         return "Application is running!";
     }
 }
+
