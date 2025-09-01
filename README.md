@@ -43,12 +43,12 @@ java -jar target/demo-0.0.1-SNAPSHOT.jar
 ### Using IDE
 Run the `DemoApplication.java` class directly from your IDE.
 
-### Using Docker Compose (Redis only)
+### Using Docker Compose (Redis)
 This project includes a `docker-compose.yml` to run Redis locally with persistence (no password).
 
 ```bash
 # Start Redis in the background
-docker compose up -d
+docker compose up -d redis
 
 # Check status and logs
 docker compose ps
@@ -64,6 +64,50 @@ docker compose down -v
 Notes:
 - The app is configured to connect to `localhost:6379` by default, which matches the compose setup.
 - If you later run the Spring app in Docker, use `SPRING_REDIS_HOST=redis` so it can reach the `redis` service over the compose network.
+
+### Using Docker Compose (MySQL)
+This repository's `docker-compose.yml` also includes a MySQL 8 service with a persistent volume and a default database/user.
+
+Defaults (from compose):
+- Host: `localhost` (or `mysql` from other compose services)
+- Port: `3306`
+- Database: `appdb`
+- User: `appuser`
+- Password: `apppass`
+- Root password: `example`
+
+Commands
+```bash
+# (Optional) Pre-pull the MySQL image
+docker pull mysql:8.0
+
+# Start only MySQL
+docker compose up -d mysql
+
+# Check status and logs
+docker compose ps
+docker compose logs -f mysql
+
+# Access MySQL interactive client (app user)
+docker compose exec mysql mysql -u appuser -p appdb
+# When prompted, enter password: apppass
+
+# Verify connectivity (as app user)
+docker compose exec mysql mysql -uappuser -papppass -e "SHOW DATABASES;"
+
+# Verify connectivity (as root)
+docker compose exec mysql mysql -uroot -pexample -e "SELECT VERSION();"
+
+# Stop (keep data volume)
+docker compose down
+
+# Remove containers and data volumes (Redis + MySQL)
+docker compose down -v
+```
+
+Notes:
+- Spring Boot datasource (added in a later step) should use `jdbc:mysql://localhost:3306/appdb` with `username=appuser` and `password=apppass` for local development.
+- When the Spring app runs inside the same compose network, use `jdbc:mysql://mysql:3306/appdb` for the URL.
 
 ## Testing
 
