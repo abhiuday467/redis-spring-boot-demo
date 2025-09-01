@@ -15,10 +15,47 @@ src/
 │   ├── java/
 │   │   └── com/redis/demo/
 │   │       ├── DemoApplication.java
-│   │       └── controller/
-│   │           └── HelloController.java
+│   │       ├── domain/
+│   │       │   ├── auth/
+│   │       │   │   └── AuthService.java
+│   │       │   └── user/
+│   │       │       ├── CreateUserCommand.java
+│   │       │       ├── PasswordEncoderPort.java
+│   │       │       ├── User.java
+│   │       │       ├── UserRepositoryPort.java
+│   │       │       └── UserService.java
+│   │       ├── presentation/
+│   │       │   ├── auth/
+│   │       │   │   ├── AuthController.java
+│   │       │   │   └── dto/
+│   │       │   │       ├── AuthResponse.java
+│   │       │   │       └── LoginRequest.java
+│   │       │   ├── hello/
+│   │       │   │   └── HelloController.java
+│   │       │   ├── security/
+│   │       │   │   ├── SessionAuthInterceptor.java
+│   │       │   │   └── WebConfig.java
+│   │       │   └── user/
+│   │       │       ├── UserController.java
+│   │       │       └── dto/
+│   │       │           ├── UserRequest.java
+│   │       │           └── UserResponse.java
+│   │       ├── infrastructure/
+│   │       │   ├── crypto/
+│   │       │   │   └── BCryptPasswordEncoderAdapter.java
+│   │       │   └── persistence/
+│   │       │       ├── UserRepositoryAdapter.java
+│   │       │       ├── entity/
+│   │       │       │   └── UserEntity.java
+│   │       │       ├── mapper/
+│   │       │       │   └── UserPersistenceMapper.java
+│   │       │       └── repository/
+│   │       │           └── UserRepository.java
 │   └── resources/
-│       └── application.properties
+│       ├── application.properties
+│       └── db/
+│           └── migration/
+│               └── V1__create_users_table.sql
 └── test/
     └── java/
         └── com/redis/demo/
@@ -111,12 +148,21 @@ Notes:
 
 ## Testing
 
-Once the application is running, you can test it by visiting:
-- http://localhost:8080/ - Should display "Hello, Spring Boot!"
+Once the application is running:
+- http://localhost:8080/health — Public health check
+- Authenticated hello:
+  1) Create a user: `curl -i -X POST http://localhost:8080/api/users -H "Content-Type: application/json" -d '{"email":"alice@example.com","firstName":"Alice","lastName":"Doe","password":"secret"}'`
+  2) Login and store cookie: `curl -i -c cookies.txt -X POST http://localhost:8080/api/auth/login -H "Content-Type: application/json" -d '{"email":"alice@example.com","password":"secret"}'`
+  3) Call hello with session: `curl -i -b cookies.txt http://localhost:8080/`
 
 ## API Endpoints
 
-- `GET /` - Returns a greeting message
+- `POST /api/users` — Create user (JSON: email, firstName, lastName, password)
+- `POST /api/auth/login` — Login with email/password, creates Redis-backed session, returns session + user summary
+- `GET /api/auth/me` — Returns current session’s user info
+- `POST /api/auth/logout` — Invalidates current session
+- `GET /` — Hello message (requires authenticated session)
+- `GET /health` — Health check (public)
 
 ## Dependencies
 
@@ -134,34 +180,28 @@ The application runs on port 8080 by default. You can modify this in `src/main/r
 
 ## Current Status
 
-- Server: Redis 7 (Alpine) via Docker Compose with AOF persistence and a named volume (`redis-data`); no password/auth configured.
-- Client: Spring Data Redis using Lettuce (Spring Boot default) and Spring Session storing HTTP session data in Redis.
-- Caching: `@EnableCaching` is enabled, but no methods use `@Cacheable`/`@CachePut`/`@CacheEvict` yet.
-- Connection: App points to `localhost:6379` with empty password as configured in `src/main/resources/application.properties`.
-- Data flow: Session → Spring Session → Spring Data Redis → Lettuce → Redis.
+- Architecture: Ports & Adapters (Hexagonal) with three layers — `domain` (business logic), `presentation` (controllers/DTOs), and `infrastructure` (persistence, crypto). MapStruct maps between layers.
+- Persistence: Spring Data JDBC to MySQL; Flyway migration `V1__create_users_table.sql` creates the `users` table.
+- Security (web): Spring Session on Redis stores HTTP sessions. `SessionAuthInterceptor` enforces authentication for all endpoints except `/api/auth/**` and `/health`.
+- Endpoints: `POST /api/users` (create user, hashes password with BCrypt), `POST /api/auth/login` (validate email/password), `GET /api/auth/me`, `POST /api/auth/logout`, `GET /health` (public), `GET /` (hello, now requires an authenticated session).
+- Infrastructure: Persistence entity moved to `infrastructure/persistence/entity/UserEntity`, repository to `infrastructure/persistence/repository/UserRepository`, and adapter `infrastructure/persistence/UserRepositoryAdapter` implements `UserRepositoryPort`.
+- Tooling: MapStruct configured via Maven; BCrypt via `spring-security-crypto`.
 
 ## Future Action Plan
 
-1. Have MySQL database
-   - Add a MySQL service (Docker Compose) with a persistent volume and default database/schema.
-   - Add MySQL driver dependency to `pom.xml` and configure `spring.datasource.*`.
+1. Token-based authentication (mobile/API)
+   - Access token: short‑lived JWT (5–15 min) signed and verified statelessly by the API.
+   - Refresh token: long‑lived opaque token stored in Redis (hashed) with TTL and rotation.
+   - Endpoints: `POST /api/auth/token` (login → access+refresh), `POST /api/auth/refresh`, `POST /api/auth/logout` (revoke current), `POST /api/auth/logout-all` (revoke all for user).
+   - Redis schema: `rt:{userId}:{deviceId}:{id}` → `{ hash, scope, createdAt }` with TTL; `rtidx:{userId}` set for “logout all”; optional access-token denylist `blk:access:{jti}` for immediate revocation until expiry.
+   - Security chains: Keep session-based auth for web routes; add a JWT filter chain for `/api/**`.
 
-2. Create `user` table
-   - Columns: `email_id` (unique), `first_name`, `last_name`, `password_hash`.
-   - Use JPA entity + schema migration (Flyway/Liquibase) or DDL auto for initial setup.
-   - Store only hashed passwords (BCrypt) — never plaintext.
+2. Session improvements (optional)
+   - Principal indexing: set `FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME` at login; on user delete/disable, delete all sessions for that principal.
+   - Revocation check: add `exists/enabled` verification for `userId` in interceptor (cache result for 30–60s) to handle mid-session user deletion.
 
-3. Endpoint to create user
-   - `POST /api/users` accepts email, firstName, lastName, password.
-   - Hash password with BCrypt and persist via a `UserRepository`.
-   - Validate uniqueness of `email_id`; return 201 on success.
+3. Domain features
+   - Add more use cases (e.g., find user by email, profile update) as domain services behind ports; map via MapStruct as done for create.
 
-4. Endpoint to validate user and create session
-   - `POST /api/auth/login` verifies email + password (BCrypt match).
-   - On success, create Spring Session (Redis-backed) with minimal user info.
-   - Return session identifier and user summary (no sensitive fields).
-
-5. Protect other endpoints with this session
-   - Add a session filter or use Spring Security to require an authenticated session.
-   - Expose `GET /api/auth/me` for current user; block access when no valid session.
-   - Optionally add logout endpoint to invalidate session.
+4. Observability & hardening
+   - Add structured logging for auth flows, rate limiting on login/refresh, and basic health/readiness probes for Redis/MySQL.
