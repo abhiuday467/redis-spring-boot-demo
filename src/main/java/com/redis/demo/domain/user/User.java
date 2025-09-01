@@ -1,24 +1,10 @@
-package com.redis.demo.model;
+package com.redis.demo.domain.user;
 
-import org.springframework.data.annotation.Id;
-import org.springframework.data.relational.core.mapping.Column;
-import org.springframework.data.relational.core.mapping.Table;
-
-@Table("users")
 public class User {
-    @Id
     private Long id;
-
-    @Column("email_id")
     private String emailId;
-
-    @Column("first_name")
     private String firstName;
-
-    @Column("last_name")
     private String lastName;
-
-    @Column("password_hash")
     private String passwordHash;
 
     public Long getId() { return id; }
@@ -32,3 +18,4 @@ public class User {
     public String getPasswordHash() { return passwordHash; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
 }
+
