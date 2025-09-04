@@ -47,6 +47,48 @@ Notes:
 - The app is configured to connect to `localhost:6379` by default, which matches the compose setup.
 - If you later run the Spring app in Docker, use `SPRING_REDIS_HOST=redis` so it can reach the `redis` service over the compose network.
 
+### Redis Mode
+Single node: simplest for local dev; uses `docker-compose.yml` → service `redis` (localhost:6379). App runs with default config from `application.properties`.
+
+### Redis Cluster + MySQL (6 services)
+This setup runs 6 independent Redis containers and then bootstraps them into a cluster (3 masters + 3 replicas), alongside MySQL.
+
+Start and bootstrap
+```bash
+# Start containers
+docker compose -f docker-compose.redis-cluster-sql.yml up -d
+
+# Bootstrap the cluster (creates slots and replicas)
+docker compose -f docker-compose.redis-cluster-sql.yml exec -T redis-7000 \
+  redis-cli --cluster create \
+  redis-7000:7000 redis-7001:7001 redis-7002:7002 \
+  redis-7003:7003 redis-7004:7004 redis-7005:7005 \
+  --cluster-replicas 1 --cluster-yes
+
+# Verify
+docker compose -f docker-compose.redis-cluster-sql.yml exec -T redis-7000 redis-cli -c -p 7000 cluster info
+docker compose -f docker-compose.redis-cluster-sql.yml exec -T redis-7000 sh -lc "redis-cli -c -p 7000 cluster nodes | head"
+
+# Stop (keep volumes)
+docker compose -f docker-compose.redis-cluster-sql.yml down
+
+# Remove containers and volumes
+docker compose -f docker-compose.redis-cluster-sql.yml down -v
+```
+
+Run the Spring app in cluster mode (see `src/main/resources/application-cluster.properties`). When running the app inside the same Compose network, use the service names for cluster nodes:
+
+```bash
+# Example (inside Docker or via env override)
+SPRING_REDIS_CLUSTER_NODES=redis-7000:7000,redis-7001:7001,redis-7002:7002,redis-7003:7003,redis-7004:7004,redis-7005:7005 \
+mvn spring-boot:run -Dspring-boot.run.profiles=cluster
+```
+
+Important:
+- Do not run the single-node `redis` from `docker-compose.yml` at the same time; ports would conflict.
+- In this 6‑service setup, Redis nodes announce their container hostnames (e.g., `redis-7000`). For clients running on the host (outside Docker), MOVED redirects won’t resolve. Run the Spring app inside the same Docker network (recommended) or use a custom network setup that makes those hostnames resolvable from the host.
+- MySQL in this compose uses the same defaults as the single-node compose (DB `appdb`, user `appuser`, password `apppass`).
+
 ### Using Docker Compose (MySQL)
 This repository's `docker-compose.yml` also includes a MySQL 8 service with a persistent volume and a default database/user.
 
@@ -162,3 +204,9 @@ The application runs on port 8080 by default. You can modify this in `src/main/r
 
 4. Observability & hardening
    - Add structured logging for auth flows, rate limiting on login/refresh, and basic health/readiness probes for Redis/MySQL.
+ 
+5. Cluster-based login fix
+   - Current status: login with Redis Cluster profile is not working; session writes fail when the app runs on the host due to cluster MOVED redirects to container hostnames (e.g., redis-7000).
+   - Fix options: run the Spring app inside the same Docker Compose network, or adjust Redis nodes to announce a host-reachable address (e.g., set `--cluster-announce-ip` to host IP and use `localhost:700x`), and verify Lettuce cluster topology refresh settings.
+ 
+ 

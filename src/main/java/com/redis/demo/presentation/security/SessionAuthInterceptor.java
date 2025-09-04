@@ -14,6 +14,17 @@ public class SessionAuthInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        // Allow unauthenticated user registration: only POST /api/users
+        String method = request.getMethod();
+        String uri = request.getRequestURI();
+        String ctx = request.getContextPath();
+        if (ctx != null && !ctx.isEmpty() && uri.startsWith(ctx)) {
+            uri = uri.substring(ctx.length());
+        }
+        if ("POST".equalsIgnoreCase(method) && ("/api/users".equals(uri) || "/api/users/".equals(uri))) {
+            return true;
+        }
+
         HttpSession session = request.getSession(false);
         Object userId = (session != null) ? session.getAttribute("userId") : null;
         if (userId == null) {
@@ -29,4 +40,3 @@ public class SessionAuthInterceptor implements HandlerInterceptor {
         response.getWriter().write("{\"error\":\"Unauthorized\"}");
     }
 }
-
