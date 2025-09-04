@@ -7,61 +7,6 @@ This is a basic Spring Boot project created with Maven.
 - Java 17 or higher
 - Maven 3.6 or higher
 
-## Project Structure
-
-```
-src/
-├── main/
-│   ├── java/
-│   │   └── com/redis/demo/
-│   │       ├── DemoApplication.java
-│   │       ├── domain/
-│   │       │   ├── auth/
-│   │       │   │   └── AuthService.java
-│   │       │   └── user/
-│   │       │       ├── CreateUserCommand.java
-│   │       │       ├── PasswordEncoderPort.java
-│   │       │       ├── User.java
-│   │       │       ├── UserRepositoryPort.java
-│   │       │       └── UserService.java
-│   │       ├── presentation/
-│   │       │   ├── auth/
-│   │       │   │   ├── AuthController.java
-│   │       │   │   └── dto/
-│   │       │   │       ├── AuthResponse.java
-│   │       │   │       └── LoginRequest.java
-│   │       │   ├── hello/
-│   │       │   │   └── HelloController.java
-│   │       │   ├── security/
-│   │       │   │   ├── SessionAuthInterceptor.java
-│   │       │   │   └── WebConfig.java
-│   │       │   └── user/
-│   │       │       ├── UserController.java
-│   │       │       └── dto/
-│   │       │           ├── UserRequest.java
-│   │       │           └── UserResponse.java
-│   │       ├── infrastructure/
-│   │       │   ├── crypto/
-│   │       │   │   └── BCryptPasswordEncoderAdapter.java
-│   │       │   └── persistence/
-│   │       │       ├── UserRepositoryAdapter.java
-│   │       │       ├── entity/
-│   │       │       │   └── UserEntity.java
-│   │       │       ├── mapper/
-│   │       │       │   └── UserPersistenceMapper.java
-│   │       │       └── repository/
-│   │       │           └── UserRepository.java
-│   └── resources/
-│       ├── application.properties
-│       └── db/
-│           └── migration/
-│               └── V1__create_users_table.sql
-└── test/
-    └── java/
-        └── com/redis/demo/
-            └── DemoApplicationTests.java
-```
-
 ## Running the Application
 
 ### Using Maven
@@ -150,6 +95,8 @@ Notes:
 
 Once the application is running:
 - http://localhost:8080/health — Public health check
+- http://localhost:8080/swagger-ui.html — Swagger UI (OpenAPI docs)
+  - OpenAPI JSON: http://localhost:8080/v3/api-docs
 - Authenticated hello:
   1) Create a user: `curl -i -X POST http://localhost:8080/api/users -H "Content-Type: application/json" -d '{"email":"alice@example.com","firstName":"Alice","lastName":"Doe","password":"secret"}'`
   2) Login and store cookie: `curl -i -c cookies.txt -X POST http://localhost:8080/api/auth/login -H "Content-Type: application/json" -d '{"email":"alice@example.com","password":"secret"}'`
@@ -163,6 +110,16 @@ Once the application is running:
 - `POST /api/auth/logout` — Invalidates current session
 - `GET /` — Hello message (requires authenticated session)
 - `GET /health` — Health check (public)
+
+## Swagger / OpenAPI
+
+- Library: `springdoc-openapi-starter-webmvc-ui`
+- UI: visit `http://localhost:8080/swagger-ui.html` (redirects to `/swagger-ui/index.html`).
+- JSON: `http://localhost:8080/v3/api-docs`.
+
+Notes:
+- The `SessionAuthInterceptor` excludes Swagger endpoints so docs are publicly accessible.
+- API metadata is defined via `@OpenAPIDefinition` on `src/main/java/com/redis/demo/DemoApplication.java`.
 
 ## Dependencies
 
@@ -182,7 +139,7 @@ The application runs on port 8080 by default. You can modify this in `src/main/r
 
 - Architecture: Ports & Adapters (Hexagonal) with three layers — `domain` (business logic), `presentation` (controllers/DTOs), and `infrastructure` (persistence, crypto). MapStruct maps between layers.
 - Persistence: Spring Data JDBC to MySQL; Flyway migration `V1__create_users_table.sql` creates the `users` table.
-- Security (web): Spring Session on Redis stores HTTP sessions. `SessionAuthInterceptor` enforces authentication for all endpoints except `/api/auth/**` and `/health`.
+- Security (web): Spring Session on Redis stores HTTP sessions. `SessionAuthInterceptor` enforces authentication for all endpoints except `/api/auth/**`, `/health`, and Swagger docs (`/v3/api-docs/**`, `/swagger-ui/**`, `/swagger-ui.html`).
 - Endpoints: `POST /api/users` (create user, hashes password with BCrypt), `POST /api/auth/login` (validate email/password), `GET /api/auth/me`, `POST /api/auth/logout`, `GET /health` (public), `GET /` (hello, now requires an authenticated session).
 - Infrastructure: Persistence entity moved to `infrastructure/persistence/entity/UserEntity`, repository to `infrastructure/persistence/repository/UserRepository`, and adapter `infrastructure/persistence/UserRepositoryAdapter` implements `UserRepositoryPort`.
 - Tooling: MapStruct configured via Maven; BCrypt via `spring-security-crypto`.

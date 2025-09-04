@@ -22,8 +22,11 @@ public class WebConfig implements WebMvcConfigurer {
                         "/health",       // health check is public
                         "/error",        // Spring error path
                         "/favicon.ico",
-                        "/css/**", "/js/**", "/images/**"
+                        "/css/**", "/js/**", "/images/**",
+                        // Swagger/OpenAPI docs
+                        "/v3/api-docs/**", 
+                        "/swagger-ui/**",
+                        "/swagger-ui.html"
                 );
     }
 }
-
